@@ -73,6 +73,20 @@ RNA_TUMOR_C_VAF\tRNA_TUMOR_G_VAF\tRNA_TUMOR_T_VAF\tRNA_TUMOR_N_VAF\n'
 
     return header
 
+def get_positions(fp, no_input_header=True):
+    f = open(fp)
+    if not no_input_header:
+        f.readline()
+
+    positions = set()
+    for line in f:
+        pieces = line.split('\t', 2)
+        chrom = pieces[0]
+        pos = pieces[1]
+        positions.add((chrom, pos))
+
+    return positions
+        
 def process_vaf_line_light(vaf_line):
     """Processes vaf line for key spots
 
@@ -192,11 +206,23 @@ def write_editing_sites(dna_a_vaf_fp, dna_t_vaf_fp, rna_a_vaf_fp, rna_t_vaf_fp,
 
     site tup: (chrom, pos)
     """
+
+
+    table_output = []
+    json_output = []
+
+    positions = get_positions(dna_a_vaf_fp, no_input_header=no_input_header)
+    positions = positions.intersection(get_positions(dna_t_vaf_fp, no_input_header=no_input_header))
+    positions = positions.intersection(get_positions(rna_a_vaf_fp, no_input_header=no_input_header))
+    positions = positions.intersection(get_positions(rna_t_vaf_fp, no_input_header=no_input_header))
+
+    # {{chr1, 10): {'dna_a': line, 'dna_t': line, ..}}
+    position_to_lines = {p:{} for p in positions}
+
     dna_a_f = open(dna_a_vaf_fp)
     dna_t_f = open(dna_t_vaf_fp)
     rna_a_f = open(rna_a_vaf_fp)
     rna_t_f = open(rna_t_vaf_fp)
-
     # kill header if needed
     if not no_input_header:
         dna_a_f.readline()
@@ -204,13 +230,39 @@ def write_editing_sites(dna_a_vaf_fp, dna_t_vaf_fp, rna_a_vaf_fp, rna_t_vaf_fp,
         rna_a_f.readline()
         rna_t_f.readline()
 
-    table_output = []
-    json_output = []
-    for dna_a_line, dna_t_line, rna_a_line, rna_t_line in zip(dna_a_f, dna_t_f, rna_a_f, rna_t_f):
-        chrom, pos, dna_a_depth, dna_a_minor_vaf = process_vaf_line_light(dna_a_line)
+    for line in dna_a_f:
+        chrom, pos = line.split('\t', 2)[:2]
+        if (chrom, pos) in positions:
+            position_to_lines[(chrom, pos)]['dna_a'] = line
+    dna_a_f.close()
+    for line in dna_t_f:
+        chrom, pos = line.split('\t', 2)[:2]
+        if (chrom, pos) in positions:
+            position_to_lines[(chrom, pos)]['dna_t'] = line
+    dna_t_f.close()
+    for line in rna_a_f:
+        chrom, pos = line.split('\t', 2)[:2]
+        if (chrom, pos) in positions:
+            position_to_lines[(chrom, pos)]['rna_a'] = line
+    rna_a_f.close()
+    for line in rna_t_f:
+        chrom, pos = line.split('\t', 2)[:2]
+        if (chrom, pos) in positions:
+            position_to_lines[(chrom, pos)]['rna_t'] = line
+    rna_t_f.close()
+
+    for (chrom, pos), line_dict in position_to_lines.items():
+        dna_a_line = line_dict['dna_a']
+        dna_t_line = line_dict['dna_t']
+        rna_a_line = line_dict['rna_a']
+        rna_t_line = line_dict['dna_t']
+
+        _, _, dna_a_depth, dna_a_minor_vaf = process_vaf_line_light(dna_a_line)
         _, _, dna_t_depth, dna_t_minor_vaf = process_vaf_line_light(dna_t_line)
         _, _, rna_a_depth, rna_a_minor_vaf = process_vaf_line_light(rna_a_line)
         _, _, rna_t_depth, rna_t_minor_vaf = process_vaf_line_light(rna_t_line)
+
+    
 
         passes_depth = passes_depth_filter([dna_a_depth, dna_t_depth, rna_a_depth, rna_t_depth])
         valid_editing_site = is_editing_site(dna_a_minor_vaf, dna_t_minor_vaf,
@@ -223,11 +275,6 @@ def write_editing_sites(dna_a_vaf_fp, dna_t_vaf_fp, rna_a_vaf_fp, rna_t_vaf_fp,
 
             add_to_table(table_output, dna_a_dict, dna_t_dict, rna_a_dict, rna_t_dict)
             add_to_json(json_output, dna_a_dict, dna_t_dict, rna_a_dict, rna_t_dict)
-
-    dna_a_f.close()
-    dna_t_f.close()
-    rna_a_f.close()
-    rna_t_f.close()
 
     # write output table
     table_out = open(table_output_fp, 'w')
