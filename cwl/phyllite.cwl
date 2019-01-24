@@ -66,4 +66,4 @@ arguments:
     valueFrom: output.json
 requirements:
   - class: DockerRequirement
-    dockerPull: 'estorrs/phyllite:0.0.1'
+    dockerPull: 'estorrs/phyllite:0.0.2'
