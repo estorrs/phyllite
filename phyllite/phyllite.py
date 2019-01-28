@@ -255,7 +255,7 @@ def write_editing_sites(dna_a_vaf_fp, dna_t_vaf_fp, rna_a_vaf_fp, rna_t_vaf_fp,
         dna_a_line = line_dict['dna_a']
         dna_t_line = line_dict['dna_t']
         rna_a_line = line_dict['rna_a']
-        rna_t_line = line_dict['dna_t']
+        rna_t_line = line_dict['rna_t']
 
         _, _, dna_a_depth, dna_a_minor_vaf = process_vaf_line_light(dna_a_line)
         _, _, dna_t_depth, dna_t_minor_vaf = process_vaf_line_light(dna_t_line)
