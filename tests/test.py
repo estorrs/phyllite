@@ -65,3 +65,20 @@ def test_count_thresholds():
     results = subprocess.check_output(tool_args).decode('utf-8')
 
     assert open('output.tsv').read() == open(os.path.join(EXPECTED_DIR, 'counts.tsv')).read()
+
+def test_singleton():
+    tool_args = ['python', 'phyllite/phyllite.py',
+            '--dna-tumor-vaf', DNA_TUMOR_COUNT_VAF_FP,
+            '--rna-tumor-vaf', RNA_TUMOR_COUNT_VAF_FP,
+            '--min-depth', '10',
+            '--max-dna-minor-vaf', '0.1',
+            '--min-rna-minor-vaf', '0.1',
+            '--max-dna-minor-count', '1',
+            '--min-rna-minor-count', '3',
+            '--table-output', 'output.tsv',
+            '--json-output', 'output.json']
+    
+    results = subprocess.check_output(tool_args).decode('utf-8')
+    print(results)
+
+    assert open('output.tsv').read() == open(os.path.join(EXPECTED_DIR, 'singleton.tsv')).read()

@@ -17,13 +17,13 @@ parser = argparse.ArgumentParser()
 # file inputs group
 file_group = parser.add_argument_group('file_group')
 file_group.add_argument('--dna-normal-vaf', type=str,
-        help='dna normal vaf for sample')
+        default=None, help='dna normal vaf for sample')
 file_group.add_argument('--dna-tumor-vaf', type=str,
-        help='dna tumor vaf for sample')
+        default=None, help='dna tumor vaf for sample')
 file_group.add_argument('--rna-normal-vaf', type=str,
-        help='rna normal vaf for sample')
+        default=None, help='rna normal vaf for sample')
 file_group.add_argument('--rna-tumor-vaf', type=str,
-        help='rna tumor vaf for sample')
+        default=None, help='rna tumor vaf for sample')
 
 parser.add_argument('--min-depth', type=int,
         default=10, help='Minimum depth threshold. Each of the 4 sites must be >= min depth.')
@@ -56,14 +56,10 @@ MIN_RNA_MINOR_COUNT = args.min_rna_minor_count
 MIN_DEPTH = args.min_depth
 
 def check_arguments():
-    if args.dna_normal_vaf is None:
-        raise ValueError('Must specify --dna-normal-vaf')
-    if args.dna_tumor_vaf is None:
-        raise ValueError('Must specify --dna-tumor-vaf')
-    if args.rna_normal_vaf is None:
-        raise ValueError('Must specify --rna-normal-vaf')
-    if args.rna_tumor_vaf is None:
-        raise ValueError('Must specify --rna-tumor-vaf')
+    if args.dna_normal_vaf is None and args.dna_tumor_vaf is None:
+        raise ValueError('Must specify --dna-normal-vaf and/or --dna-tumor-vaf')
+    if args.rna_normal_vaf is None and args.rna_tumor_vaf is None:
+        raise ValueError('Must specify --rna-normal-vaf and/or --rna-tumor-vaf')
 
 def get_table_header():
     """Returns header for output table"""
@@ -240,10 +236,13 @@ def write_editing_sites(dna_a_vaf_fp, dna_t_vaf_fp, rna_a_vaf_fp, rna_t_vaf_fp,
             'rna_t': rna_t_vaf_fp
             }
 
-    positions = get_positions(dna_a_vaf_fp, no_input_header=no_input_header)
+    positions = set()
     for fp in fps_dict.values():
         if fp is not None:
-            positions = positions.intersection(get_positions(fp, no_input_header=no_input_header))
+            if len(positions) == 0:
+                positions = get_positions(fp, no_input_header=no_input_header)
+            else:
+                positions = positions.intersection(get_positions(fp, no_input_header=no_input_header))
 
     # {{chr1, 10): {'dna_a': line, 'dna_t': line, ..}}
     position_to_lines = {p:{} for p in positions}
@@ -270,6 +269,8 @@ def write_editing_sites(dna_a_vaf_fp, dna_t_vaf_fp, rna_a_vaf_fp, rna_t_vaf_fp,
                 opp_identifier = 'rna_t'
             if 'rna_t' == fp_identifier:
                 opp_identifier = 'rna_a'
+            
+            print(fp_identifier, opp_identifier)
 
             for line in f:
                 chrom, pos = line.split('\t', 2)[:2]
@@ -278,8 +279,11 @@ def write_editing_sites(dna_a_vaf_fp, dna_t_vaf_fp, rna_a_vaf_fp, rna_t_vaf_fp,
 
                     if len(dna_fps_identifiers) == 1 and fp_identifier in dna_fps_identifiers:
                         position_to_lines[(chrom, pos)][opp_identifier] = line
+                    elif len(rna_fps_identifiers) == 1 and fp_identifier in rna_fps_identifiers:
+                        position_to_lines[(chrom, pos)][opp_identifier] = line
 
             f.close()
+    print(position_to_lines)
 
     for (chrom, pos), line_dict in position_to_lines.items():
         dna_a_line = line_dict['dna_a']
@@ -293,6 +297,9 @@ def write_editing_sites(dna_a_vaf_fp, dna_t_vaf_fp, rna_a_vaf_fp, rna_t_vaf_fp,
         _, _, rna_t_depth, rna_t_minor_vaf, rna_t_minor_count = process_vaf_line_light(rna_t_line)
     
         passes_depth = passes_depth_filter([dna_a_depth, dna_t_depth, rna_a_depth, rna_t_depth])
+
+        print(dna_a_minor_vaf, dna_t_minor_vaf, rna_a_minor_vaf, rna_t_minor_vaf)
+        print(dna_a_minor_count, dna_t_minor_count, rna_a_minor_count, rna_t_minor_count)
 
         is_valid_editing_site_by_vaf = is_editing_site_by_vaf(dna_a_minor_vaf, dna_t_minor_vaf,
                 rna_a_minor_vaf, rna_t_minor_vaf)
