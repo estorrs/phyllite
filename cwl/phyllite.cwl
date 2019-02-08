@@ -32,11 +32,21 @@ inputs:
     inputBinding:
       position: 0
       prefix: '--min-depth'
+  - id: max_dna_minor_count
+    type: int?
+    inputBinding:
+      position: 0
+      prefix: '--max-dna-minor-count'
   - id: max_dna_minor_vaf
     type: float?
     inputBinding:
       position: 0
       prefix: '--max-dna-minor-vaf'
+  - id: min_rna_minor_count
+    type: int?
+    inputBinding:
+      position: 0
+      prefix: '--min-rna-minor-count'
   - id: min_rna_minor_vaf
     type: float?
     inputBinding:
@@ -66,4 +76,4 @@ arguments:
     valueFrom: output.json
 requirements:
   - class: DockerRequirement
-    dockerPull: 'estorrs/phyllite:0.0.2'
+    dockerPull: 'estorrs/phyllite:0.0.3'

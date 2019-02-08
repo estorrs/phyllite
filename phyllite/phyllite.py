@@ -27,9 +27,15 @@ file_group.add_argument('--rna-tumor-vaf', type=str,
 
 parser.add_argument('--min-depth', type=int,
         default=10, help='Minimum depth threshold. Each of the 4 sites must be >= min depth.')
+parser.add_argument('--max-dna-minor-count', type=int,
+        default=1, help='Maximum number of reads supporting minor allele in dna for a site \
+to be considered for rna editing.')
 parser.add_argument('--max-dna-minor-vaf', type=float,
-        default=.01, help='Maximum minor vaf in both dna normal and dna tumor for site to be \
+        default=.1, help='Maximum minor vaf in both dna normal and dna tumor for site to be \
 considered for rna editing')
+parser.add_argument('--min-rna-minor-count', type=int,
+        default=3, help='Minimum number of reads supporting minor allele in rna for a site \
+to be considered for rna editing.')
 parser.add_argument('--min-rna-minor-vaf', type=float,
         default=.1, help='Minimum minor vaf in either rna normal or rna tumor for site to be \
 considered for rna editing')
@@ -40,13 +46,13 @@ parser.add_argument('--json-output', type=str,
 
 parser.add_argument('--no-vaf-header', action='store_true',
         help='Indicates whether input vaf files have a header line')
-# parser.add_argument('--input-int', type=int,
-#         default=2, help='an input int')
 
 args = parser.parse_args()
 
 MAX_DNA_MINOR_VAF = args.max_dna_minor_vaf
 MIN_RNA_MINOR_VAF = args.min_rna_minor_vaf
+MAX_DNA_MINOR_COUNT = args.max_dna_minor_count
+MIN_RNA_MINOR_COUNT = args.min_rna_minor_count
 MIN_DEPTH = args.min_depth
 
 def check_arguments():
@@ -94,7 +100,14 @@ def process_vaf_line_light(vaf_line):
     """
 
     pieces = vaf_line.split('\t', 6)
-    return pieces[0], pieces[1], int(pieces[3]), float(pieces[5])
+
+    chrom = pieces[0]
+    pos = pieces[1]
+    depth = int(pieces[3])
+    minor_vaf = float(pieces[5])
+    minor_count = round(minor_vaf * depth)
+    
+    return chrom, pos, depth, minor_vaf, minor_count
 
 def process_vaf_line(vaf_line):
     """Processes full vaf line into dict
@@ -131,12 +144,22 @@ def process_vaf_line(vaf_line):
 
     return d
 
-def is_editing_site(dna_a_minor_vaf, dna_t_minor_vaf, rna_a_minor_vaf, rna_t_minor_vaf):
-    """Returns true if thresholds are passed."""
+def is_editing_site_by_vaf(dna_a_minor_vaf, dna_t_minor_vaf, rna_a_minor_vaf, rna_t_minor_vaf):
+    """Returns true if vaf thresholds are passed."""
     if dna_a_minor_vaf > MAX_DNA_MINOR_VAF or dna_t_minor_vaf > MAX_DNA_MINOR_VAF:
         return False
 
     if rna_a_minor_vaf < MIN_RNA_MINOR_VAF and rna_t_minor_vaf < MIN_RNA_MINOR_VAF:
+        return False
+
+    return True
+
+def is_editing_site_by_count(dna_a_minor_count, dna_t_minor_count, rna_a_minor_count, rna_t_minor_count):
+    """Returns true if count thresholds are passed."""
+    if dna_a_minor_count > MAX_DNA_MINOR_COUNT or dna_t_minor_count > MAX_DNA_MINOR_COUNT:
+        return False
+
+    if rna_a_minor_count < MIN_RNA_MINOR_COUNT and rna_t_minor_count < MIN_RNA_MINOR_COUNT:
         return False
 
     return True
@@ -200,56 +223,63 @@ def add_to_json(json_output, dna_a_dict, dna_t_dict, rna_a_dict, rna_t_dict):
 
     json_output.append(d)
 
+
 def write_editing_sites(dna_a_vaf_fp, dna_t_vaf_fp, rna_a_vaf_fp, rna_t_vaf_fp,
         no_input_header=False, table_output_fp='output.tsv', json_output_fp='output.json'):
     """Return editing site tups
 
     site tup: (chrom, pos)
     """
-
-
     table_output = []
     json_output = []
 
+    fps_dict = {
+            'dna_a': dna_a_vaf_fp,
+            'dna_t': dna_t_vaf_fp,
+            'rna_a': rna_a_vaf_fp,
+            'rna_t': rna_t_vaf_fp
+            }
+
     positions = get_positions(dna_a_vaf_fp, no_input_header=no_input_header)
-    positions = positions.intersection(get_positions(dna_t_vaf_fp, no_input_header=no_input_header))
-    positions = positions.intersection(get_positions(rna_a_vaf_fp, no_input_header=no_input_header))
-    positions = positions.intersection(get_positions(rna_t_vaf_fp, no_input_header=no_input_header))
+    for fp in fps_dict.values():
+        if fp is not None:
+            positions = positions.intersection(get_positions(fp, no_input_header=no_input_header))
 
     # {{chr1, 10): {'dna_a': line, 'dna_t': line, ..}}
     position_to_lines = {p:{} for p in positions}
+    dna_fps_identifiers = [fp_id for fp_id, fp in fps_dict.items()
+            if fp is not None
+            if 'dna' in fp_id]
+    rna_fps_identifiers = [fp_id for fp_id, fp in fps_dict.items()
+            if fp is not None
+            if 'rna' in fp_id]
 
-    dna_a_f = open(dna_a_vaf_fp)
-    dna_t_f = open(dna_t_vaf_fp)
-    rna_a_f = open(rna_a_vaf_fp)
-    rna_t_f = open(rna_t_vaf_fp)
-    # kill header if needed
-    if not no_input_header:
-        dna_a_f.readline()
-        dna_t_f.readline()
-        rna_a_f.readline()
-        rna_t_f.readline()
+    for fp_identifier, fp in fps_dict.items():
+        if fp is not None:
+            f = open(fp)
+            # kill header if needed
+            if not no_input_header:
+                f.readline()
 
-    for line in dna_a_f:
-        chrom, pos = line.split('\t', 2)[:2]
-        if (chrom, pos) in positions:
-            position_to_lines[(chrom, pos)]['dna_a'] = line
-    dna_a_f.close()
-    for line in dna_t_f:
-        chrom, pos = line.split('\t', 2)[:2]
-        if (chrom, pos) in positions:
-            position_to_lines[(chrom, pos)]['dna_t'] = line
-    dna_t_f.close()
-    for line in rna_a_f:
-        chrom, pos = line.split('\t', 2)[:2]
-        if (chrom, pos) in positions:
-            position_to_lines[(chrom, pos)]['rna_a'] = line
-    rna_a_f.close()
-    for line in rna_t_f:
-        chrom, pos = line.split('\t', 2)[:2]
-        if (chrom, pos) in positions:
-            position_to_lines[(chrom, pos)]['rna_t'] = line
-    rna_t_f.close()
+            opp_identifier = None
+            if 'dna_a' == fp_identifier:
+                opp_identifier = 'dna_t'
+            if 'dna_t' == fp_identifier:
+                opp_identifier = 'dna_a'
+            if 'rna_a' == fp_identifier:
+                opp_identifier = 'rna_t'
+            if 'rna_t' == fp_identifier:
+                opp_identifier = 'rna_a'
+
+            for line in f:
+                chrom, pos = line.split('\t', 2)[:2]
+                if (chrom, pos) in positions:
+                    position_to_lines[(chrom, pos)][fp_identifier] = line
+
+                    if len(dna_fps_identifiers) == 1 and fp_identifier in dna_fps_identifiers:
+                        position_to_lines[(chrom, pos)][opp_identifier] = line
+
+            f.close()
 
     for (chrom, pos), line_dict in position_to_lines.items():
         dna_a_line = line_dict['dna_a']
@@ -257,17 +287,19 @@ def write_editing_sites(dna_a_vaf_fp, dna_t_vaf_fp, rna_a_vaf_fp, rna_t_vaf_fp,
         rna_a_line = line_dict['rna_a']
         rna_t_line = line_dict['rna_t']
 
-        _, _, dna_a_depth, dna_a_minor_vaf = process_vaf_line_light(dna_a_line)
-        _, _, dna_t_depth, dna_t_minor_vaf = process_vaf_line_light(dna_t_line)
-        _, _, rna_a_depth, rna_a_minor_vaf = process_vaf_line_light(rna_a_line)
-        _, _, rna_t_depth, rna_t_minor_vaf = process_vaf_line_light(rna_t_line)
-
+        _, _, dna_a_depth, dna_a_minor_vaf, dna_a_minor_count = process_vaf_line_light(dna_a_line)
+        _, _, dna_t_depth, dna_t_minor_vaf, dna_t_minor_count = process_vaf_line_light(dna_t_line)
+        _, _, rna_a_depth, rna_a_minor_vaf, rna_a_minor_count = process_vaf_line_light(rna_a_line)
+        _, _, rna_t_depth, rna_t_minor_vaf, rna_t_minor_count = process_vaf_line_light(rna_t_line)
     
-
         passes_depth = passes_depth_filter([dna_a_depth, dna_t_depth, rna_a_depth, rna_t_depth])
-        valid_editing_site = is_editing_site(dna_a_minor_vaf, dna_t_minor_vaf,
+
+        is_valid_editing_site_by_vaf = is_editing_site_by_vaf(dna_a_minor_vaf, dna_t_minor_vaf,
                 rna_a_minor_vaf, rna_t_minor_vaf)
-        if passes_depth and valid_editing_site:
+        is_valid_editing_site_by_count = is_editing_site_by_count(dna_a_minor_count,
+                dna_t_minor_count, rna_a_minor_count, rna_t_minor_count)
+
+        if passes_depth and is_valid_editing_site_by_vaf and is_valid_editing_site_by_count:
             dna_a_dict = process_vaf_line(dna_a_line)
             dna_t_dict = process_vaf_line(dna_t_line)
             rna_a_dict = process_vaf_line(rna_a_line)
@@ -275,6 +307,9 @@ def write_editing_sites(dna_a_vaf_fp, dna_t_vaf_fp, rna_a_vaf_fp, rna_t_vaf_fp,
 
             add_to_table(table_output, dna_a_dict, dna_t_dict, rna_a_dict, rna_t_dict)
             add_to_json(json_output, dna_a_dict, dna_t_dict, rna_a_dict, rna_t_dict)
+
+    # sort table output
+    table_output = sorted(table_output)
 
     # write output table
     table_out = open(table_output_fp, 'w')
