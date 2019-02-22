@@ -8,7 +8,7 @@ baseCommand:
   - /phyllite/phyllite/phyllite.py
 inputs:
   - id: dna_normal_vaf
-    type: File
+    type: File?
     inputBinding:
       position: 0
       prefix: '--dna-normal-vaf'
@@ -18,7 +18,7 @@ inputs:
       position: 0
       prefix: '--dna-tumor-vaf'
   - id: rna_normal_vaf
-    type: File
+    type: File?
     inputBinding:
       position: 0
       prefix: '--rna-normal-vaf'
