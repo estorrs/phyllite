@@ -6,15 +6,15 @@ min_rna_minor_count: 3
 table_output: 'output.tsv'
 json_output: 'output.json'
 no_vaf_header: false
-dna_normal_vaf:
-  class: File
-  path: ../../tests/data/counts/dna_a.vaf
+# dna_normal_vaf:
+#   class: File
+#   path: ../../tests/data/counts/dna_a.vaf
 dna_tumor_vaf:
   class: File
   path: ../../tests/data/counts/dna_t.vaf
-rna_normal_vaf:
-  class: File
-  path: ../../tests/data/counts/rna_a.vaf
+# rna_normal_vaf:
+#   class: File
+#   path: ../../tests/data/counts/rna_a.vaf
 rna_tumor_vaf:
   class: File
   path: ../../tests/data/counts/rna_t.vaf
