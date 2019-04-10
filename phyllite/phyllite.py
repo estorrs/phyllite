@@ -63,7 +63,7 @@ def check_arguments():
 
 def get_table_header():
     """Returns header for output table"""
-    header = 'CHROM\tPOS\tREF\t'
+    header = 'CHROM\tPOS\tREF\tALT\t'
     header += 'DNA_NORMAL_DEPTH\tDNA_NORMAL_REF_VAF\tDNA_NORMAL_MINOR_VAF\tDNA_NORMAL_A_VAF\t\
 DNA_NORMAL_C_VAF\tDNA_NORMAL_G_VAF\tDNA_NORMAL_T_VAF\tDNA_NORMAL_N_VAF\t'
     header += 'DNA_TUMOR_DEPTH\tDNA_TUMOR_REF_VAF\tDNA_TUMOR_MINOR_VAF\tDNA_TUMOR_A_VAF\t\
@@ -182,11 +182,27 @@ def get_vaf_output_dict(line_dict):
     return {k:v for k, v in line_dict.items()
             if k in keep}
 
+def get_base_change(ref_base, minor_vaf, a_vaf, c_vaf, g_vaf, t_vaf):
+    vafs = [v for v in [a_vaf, c_vaf, g_vaf, t_vaf]
+            if v <= minor_vaf]
+    max_vaf = max(vafs)
+
+    if 'a' != ref_base.lower() and a_vaf == max_vaf:
+        return 'A', a_vaf
+    if 'c' != ref_base.lower() and c_vaf == max_vaf:
+        return 'C', c_vaf
+    if 'g' != ref_base.lower() and g_vaf == max_vaf:
+        return 'G', g_vaf
+    if 't' != ref_base.lower() and t_vaf == max_vaf:
+        return 'T', t_vaf
+
+    return '.', 0.0
+
 def add_to_table(table_output, dna_a_dict, dna_t_dict, rna_a_dict, rna_t_dict):
     """Add position to table output.
     line format is
         - <chrom>\t<pos>\t<ref>\t
-            <dna_normal_depth>\t<dna_normal_minor_vaf>\t<dna_normal_a_vaf>\t<dna_normal_c_vaf>\t<dna_normal_g_vaf>\t<dna_normal_g_vaf>\t<dna_normal_t_vaf>\t<dna_normal_n_vaf>\t
+            <dna_normal_depth>\t<dna_normal_minor_vaf>\t<dna_normal_a_vaf>\t<dna_normal_c_vaf>\t<dna_normal_g_vaf>\t<dna_normal_t_vaf>\t<dna_normal_n_vaf>\t
             <dna_tumor_depth>\t........\t
             <rna_normal_depth>\t........\t
             <rna_tumor_depth>\t........
@@ -194,9 +210,18 @@ def add_to_table(table_output, dna_a_dict, dna_t_dict, rna_a_dict, rna_t_dict):
     chrom = dna_a_dict['chrom']
     pos = dna_a_dict['pos']
     ref = dna_a_dict['ref']
+    normal_alt = get_base_change(ref, rna_a_dict['minor_vaf'], rna_a_dict['a_vaf'],
+            rna_a_dict['c_vaf'], rna_a_dict['g_vaf'], rna_a_dict['t_vaf'])
+    tumor_alt = get_base_change(ref, rna_t_dict['minor_vaf'], rna_t_dict['a_vaf'],
+            rna_t_dict['c_vaf'], rna_t_dict['g_vaf'], rna_t_dict['t_vaf'])
+
+    if normal_alt[1] > tumor_alt[1]:
+        alt = normal_alt[0]
+    else:
+        alt = tumor_alt[0]
 
     line = ''
-    line += f'{chrom}\t{pos}\t{ref}\t' 
+    line += f'{chrom}\t{pos}\t{ref}\t{alt}\t' 
     line += get_vaf_output_line(dna_a_dict) + '\t'
     line += get_vaf_output_line(dna_t_dict) + '\t'
     line += get_vaf_output_line(rna_a_dict) + '\t'
@@ -206,10 +231,21 @@ def add_to_table(table_output, dna_a_dict, dna_t_dict, rna_a_dict, rna_t_dict):
 
 def add_to_json(json_output, dna_a_dict, dna_t_dict, rna_a_dict, rna_t_dict):
     """Add to json output"""
+    ref = dna_a_dict['ref']
+    normal_alt = get_base_change(ref, rna_a_dict['minor_vaf'], rna_a_dict['a_vaf'],
+            rna_a_dict['c_vaf'], rna_a_dict['g_vaf'], rna_a_dict['t_vaf'])
+    tumor_alt = get_base_change(ref, rna_t_dict['minor_vaf'], rna_t_dict['a_vaf'],
+            rna_t_dict['c_vaf'], rna_t_dict['g_vaf'], rna_t_dict['t_vaf'])
+    if normal_alt[1] > tumor_alt[1]:
+        alt = normal_alt[0]
+    else:
+        alt = tumor_alt[0]
+
     d = {
             'chrom': dna_a_dict['chrom'],
             'pos': dna_a_dict['pos'],
             'ref': dna_a_dict['ref'],
+            'alt': alt,
     }
 
     d['dna_normal'] = get_vaf_output_dict(dna_a_dict)
